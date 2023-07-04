@@ -24,7 +24,7 @@ String inputSSID; // Полученный с сайта ssid
 String inputPassword; // Полученный с сайта пароль
 String inputParam; // Поле в которое было вписанно сообщение
 
-boolean CurrentState = 0; // Переменная в которой записано состояние платы (раздавать(0) или подключатся к сети(1))
+boolean CurrentState = 1; // Переменная в которой записано состояние платы (раздавать(0) или подключатся к сети(1))
 
 const char *ssid = "TEST-123"; // Сеть wifi создаваемая на плате
 const char *password = NULL; // Пароль от сети с платы
@@ -34,18 +34,13 @@ const char* recived_password = "password"; // Получаемый пароль
 
 IPAddress apIP(192, 168, 1, 4); // ip асинхронного сервера
 
-void ready_mode(){
-  CurrentState = 1;
-}
-
 const char index_html[] PROGMEM = R"rawliteral( 
 <!DOCTYPE HTML><html><head>
   <title>ESP Input Form</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
   </head><body>
-  <div>
-  <button onClick="ready_mode();">Ready mode</button>
-  </div>
+  %BUTTONPLACEHOLDER%
   <form action="/get">
     recived_ssid: <input type="text" name="ssid">
     <input type="submit" value="Submit">
@@ -55,6 +50,8 @@ const char index_html[] PROGMEM = R"rawliteral(
     <input type="submit" value="Submit">
   </form><br>
 </body></html>)rawliteral"; // Основная страничка сайта
+
+bool wifi_connacteble;
 
 void connectToWifi() // функция подключающая к wifi
 {
@@ -71,36 +68,75 @@ void WiFiEvent(WiFiEvent_t event) // функция проверяющая по�
     Serial.println("WiFi connected");
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
-    //CurrentState = 1;
+    wifi_connacteble = true;
     break;
   case SYSTEM_EVENT_STA_DISCONNECTED: // ивент получаемый при провальном подключении wifi
     Serial.println("WiFi lost connection");
-    xTimerStart(wifiReconnectTimer, 0); // запустить таймер wifi
-    //CurrentState = 0;
+    //xTimerStart(wifiReconnectTimer, 0); // запустить таймер wifi
+    wifi_connacteble = false;
     break;
+  }
+}
+
+bool check_ssid() {
+  if(pref.getString("ssid_saved", "ssid is empty").length() == 0) {
+    return false;
+  }
+  else {
+    return true;
+  }
+}
+
+bool check_pswd() {
+  if(pref.getString("password_saved", "password is empty").length() == 0) {
+    return false;
+  }
+  else {
+    return true;
   }
 }
 
 void setup() {
   Serial.begin(115200);
 
-  pref.begin("ssid", false); 
+  pref.begin("ssid", false);
+  
+  if(check_ssid() == true){
+    Serial.println("SSID is exists");
 
-  for(int i = 0; i < pref.getString("ssid_saved", "ssid is empty").length(); i++){
-    WIFI_SSID[i] += pref.getString("ssid_saved", "ssid is empty")[i];
-    Serial.println(WIFI_SSID);
+    if(check_pswd() == true){
+      Serial.println("pswd is exists");
+        for(int i = 0; i < pref.getString("ssid_saved", "ssid is empty").length(); i++){
+          WIFI_SSID[i] += pref.getString("ssid_saved", "ssid is empty")[i];
+          Serial.println(WIFI_SSID);
+        }
+
+        for(int i = 0; i < pref.getString("password_saved", "password is empty").length(); i++){
+          WIFI_PASSWORD[i] += pref.getString("password_saved", "password is empty")[i];
+          Serial.println(WIFI_PASSWORD);
+        }
+    } 
+    else {
+      Serial.println("pswd is not exists");
+      CurrentState = 0;
+    }
   }
-
-  for(int i = 0; i < pref.getString("password_saved", "password is empty").length(); i++){
-    WIFI_PASSWORD[i] += pref.getString("password_saved", "password is empty")[i];
-    Serial.println(WIFI_PASSWORD);
+  else {
+    Serial.println("SSID is not exists");
+    CurrentState = 0;
   }
-
-//  WIFI_SSID = pref.getString("ssid_saved", "ssid is empty").c_str();
-
-//  wifiReconnectTimer = xTimerCreate("wifiTimer", pdMS_TO_TICKS(2000), pdFALSE, (void *)0, reinterpret_cast<TimerCallbackFunction_t>(connectToWifi));
 
   WiFi.onEvent(WiFiEvent);
+
+  for (int i; wifi_connacteble != true; i++) {
+    if (i <= 10) {
+      WiFi.onEvent(WiFiEvent);
+    }
+    else {
+      CurrentState = 0;
+      break;
+    }
+  }
 
   connectToWifi();
 
